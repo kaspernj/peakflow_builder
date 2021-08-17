@@ -3,8 +3,8 @@
 docker run -d \
   --privileged \
   --restart=always \
-  --name peak-flow-builder \
-  --net peak-flow-builder \
+  --name peakflow-builder \
+  --net peakflow-builder \
   --ip 56.0.0.2 \
   --publish 5676:5676 \
   -v ./shared:/shared \
