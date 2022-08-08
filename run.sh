@@ -5,7 +5,7 @@ docker run -d \
   --restart=always \
   --name peakflow-builder \
   --net peakflow-builder \
-  --ip 56.0.0.2 \
+  --ip 58.0.0.2 \
   --publish 8676:8676 \
   -v $(pwd)/shared:/shared \
   docker:dind \
