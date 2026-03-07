@@ -1,7 +1,6 @@
 services:
-  peakflow-builder:
+  docker-server:
     image: docker:29.1.3-dind
-    container_name: peakflow-builder
     privileged: true
     restart: always
     ports:
@@ -17,15 +16,32 @@ services:
       - --tlscert=/shared/certificates/tlscert.pem
       - --tlskey=/shared/certificates/tlskey.pem
       - --host=tcp://0.0.0.0:8676
-      - --registry-mirror=http://server3.diestoeckels.de:5000
-      - --insecure-registry=server3.diestoeckels.de:5000
+      - --registry-mirror=http://registry-cache:5000
+      - --insecure-registry=registry-cache:5000
     networks:
       peakflow-builder:
         ipv4_address: 58.0.0.2
 
+  registry-cache:
+    image: registry:3
+    container_name: registry-cache
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      REGISTRY_PROXY_REMOTEURL: https://registry-1.docker.io
+      REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY: /var/lib/registry
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+      REGISTRY_LOG_LEVEL: info
+      OTEL_TRACES_EXPORTER: none
+    volumes:
+      - ./registry-data:/var/lib/registry
+    networks:
+      peakflow-builder:
+        ipv4_address: 58.0.0.3
+
 networks:
   peakflow-builder:
-    name: peakflow-builder
     driver: bridge
     ipam:
       config:
