@@ -1,0 +1,32 @@
+services:
+  peakflow-builder:
+    image: docker:29.1.3-dind
+    container_name: peakflow-builder
+    privileged: true
+    restart: always
+    ports:
+      - "${HOST_PORT}:8676"
+    volumes:
+      - ./shared:/shared
+    command:
+      - dockerd-entrypoint.sh
+      - --group
+      - "1000"
+      - --tlsverify
+      - --tlscacert=/shared/certificates/tlscacert.pem
+      - --tlscert=/shared/certificates/tlscert.pem
+      - --tlskey=/shared/certificates/tlskey.pem
+      - --host=tcp://0.0.0.0:8676
+      - --registry-mirror=http://server3.diestoeckels.de:5000
+      - --insecure-registry=server3.diestoeckels.de:5000
+    networks:
+      peakflow-builder:
+        ipv4_address: 58.0.0.2
+
+networks:
+  peakflow-builder:
+    name: peakflow-builder
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 58.0.0.0/24
