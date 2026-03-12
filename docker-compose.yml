@@ -25,8 +25,6 @@ services:
   registry-cache:
     image: registry:3
     restart: unless-stopped
-    ports:
-      - "5000:5000"
     environment:
       REGISTRY_PROXY_REMOTEURL: https://registry-1.docker.io
       REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY: /var/lib/registry
