@@ -3,10 +3,18 @@ services:
     image: docker:29.3.0-dind
     privileged: true
     restart: always
+    init: true
+    shm_size: ${DOCKER_SERVER_SHM_SIZE:-2g}
+    stop_grace_period: 1m
     ports:
       - "${HOST_PORT}:8676"
     volumes:
       - ./shared:/shared
+    ulimits:
+      nofile:
+        soft: ${DOCKER_SERVER_NOFILE_SOFT:-262144}
+        hard: ${DOCKER_SERVER_NOFILE_HARD:-524288}
+      nproc: ${DOCKER_SERVER_NPROC:-65535}
     command:
       - dockerd-entrypoint.sh
       - --group
