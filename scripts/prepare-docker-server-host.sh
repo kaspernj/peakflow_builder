@@ -44,7 +44,7 @@ Files written:
 Next steps:
   1. Restart any long-lived shell or service session that should inherit the new limits.
   2. Recreate the Compose stack:
-       docker compose up -d --force-recreate docker-server
+       ./scripts/recreate-docker-server.sh
   3. Verify inside the container:
        docker compose exec docker-server sh -lc 'ulimit -n && ulimit -u && df -h /dev/shm'
 
