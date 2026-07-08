@@ -14,5 +14,5 @@ Recreated docker-server.
 
 Recommended verification:
   docker compose ps docker-server
-  docker compose exec docker-server sh -lc 'ulimit -n && ulimit -u && df -h /dev/shm'
+  docker compose exec docker-server sh -lc 'ulimit -n && ulimit -u && df -h /dev/shm && ls -l /dev/kvm'
 EOF

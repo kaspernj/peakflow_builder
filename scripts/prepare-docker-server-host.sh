@@ -7,6 +7,11 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
+if [[ ! -e /dev/kvm ]]; then
+  echo "Missing /dev/kvm on the host. Enable KVM before starting docker-server."
+  exit 1
+fi
+
 SCRIPT_NAME="$(basename "$0")"
 SYSCTL_FILE="/etc/sysctl.d/99-peakflow-builder.conf"
 LIMITS_FILE="/etc/security/limits.d/99-peakflow-builder.conf"
@@ -46,7 +51,7 @@ Next steps:
   2. Recreate the Compose stack:
        ./scripts/recreate-docker-server.sh
   3. Verify inside the container:
-       docker compose exec docker-server sh -lc 'ulimit -n && ulimit -u && df -h /dev/shm'
+       docker compose exec docker-server sh -lc 'ulimit -n && ulimit -u && df -h /dev/shm && ls -l /dev/kvm'
 
 If you want different limits, adjust these environment variables in your shell or Compose env file before starting:
   DOCKER_SERVER_SHM_SIZE

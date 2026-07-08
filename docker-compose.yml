@@ -2,6 +2,8 @@ services:
   docker-server:
     image: docker:29.3.0-dind
     privileged: true
+    devices:
+      - /dev/kvm:/dev/kvm
     restart: always
     init: true
     shm_size: ${DOCKER_SERVER_SHM_SIZE:-2g}
