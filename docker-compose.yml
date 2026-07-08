@@ -25,6 +25,7 @@ services:
       - --tlscacert=/shared/certificates/tlscacert.pem
       - --tlscert=/shared/certificates/tlscert.pem
       - --tlskey=/shared/certificates/tlskey.pem
+      - --host=unix:///var/run/docker.sock
       - --host=tcp://0.0.0.0:8676
       - --registry-mirror=http://registry-cache:5000
       - --insecure-registry=registry-cache:5000
