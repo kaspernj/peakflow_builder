@@ -1,3 +1,4 @@
 .env
+.env.local
 registry-data/
 shared/certificates/*.pem
