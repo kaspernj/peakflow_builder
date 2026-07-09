@@ -26,13 +26,15 @@ services:
       - --tlscert=/shared/certificates/tlscert.pem
       - --tlskey=/shared/certificates/tlskey.pem
       - --host=tcp://0.0.0.0:8676
-      - --registry-mirror=http://registry-cache:5000
-      - --insecure-registry=registry-cache:5000
+      - --registry-mirror=http://${REGISTRY_CACHE_HOST:-registry-cache}:${REGISTRY_CACHE_PORT:-5000}
+      - --insecure-registry=${REGISTRY_CACHE_HOST:-registry-cache}:${REGISTRY_CACHE_PORT:-5000}
     networks:
       peakflow-builder:
         ipv4_address: 58.0.0.2
 
   registry-cache:
+    profiles:
+      - registry-cache
     image: registry:3
     restart: unless-stopped
     environment:
@@ -43,6 +45,8 @@ services:
       OTEL_TRACES_EXPORTER: none
     volumes:
       - ./registry-data:/var/lib/registry
+    ports:
+      - "${REGISTRY_CACHE_BIND:-127.0.0.1}:${REGISTRY_CACHE_PORT:-5000}:5000"
     networks:
       peakflow-builder:
         ipv4_address: 58.0.0.3
