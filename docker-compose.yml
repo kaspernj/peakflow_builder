@@ -12,6 +12,12 @@ services:
       - "${HOST_PORT}:8676"
     volumes:
       - ./shared:/shared
+      - type: bind
+        source: ${DOCKER_REGISTRY_CERTS_DIR:-./shared/docker-certs.d}
+        target: /etc/docker/certs.d
+        read_only: true
+        bind:
+          create_host_path: false
     ulimits:
       nofile:
         soft: ${DOCKER_SERVER_NOFILE_SOFT:-262144}

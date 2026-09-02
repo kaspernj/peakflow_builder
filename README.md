@@ -56,3 +56,42 @@ Expected response:
 ```json
 {}
 ```
+
+## Private registry certificates
+
+The Docker daemon reads private-registry trust roots from the host-managed
+directory mounted at `/etc/docker/certs.d`. The default source directory is:
+
+```text
+./shared/docker-certs.d
+```
+
+Install each public CA using Docker's registry-specific directory layout:
+
+```text
+shared/docker-certs.d/<registry-host>:<port>/ca.crt
+```
+
+For example:
+
+```text
+shared/docker-certs.d/registry.example:5001/ca.crt
+```
+
+The certificate files are host-specific and ignored by Git. Set
+`DOCKER_REGISTRY_CERTS_DIR` in `.env` to mount a different host directory.
+
+Validate the configuration before recreating the Docker server:
+
+```bash
+docker compose config --quiet
+```
+
+Recreating `docker-server` interrupts its nested Docker daemon and running
+builds, so drain the builder before recreating it to install a new CA that way.
+To install a CA without recreating `docker-server`, copy it on the host to
+`DOCKER_REGISTRY_CERTS_DIR/<registry-host>:<port>/ca.crt` (using
+`./shared/docker-certs.d` by default). The existing read-only bind exposes that
+file at `/etc/docker/certs.d/<registry-host>:<port>/ca.crt` inside the running
+container immediately. Do not copy into the container path itself; the mount is
+read-only.
