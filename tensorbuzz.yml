@@ -1,0 +1,37 @@
+before_install:
+  - |
+    set --
+    command -v shellcheck >/dev/null 2>&1 || set -- "$@" shellcheck
+    command -v jq >/dev/null 2>&1 || set -- "$@" jq
+    command -v docker >/dev/null 2>&1 || set -- "$@" docker.io
+    docker compose version >/dev/null 2>&1 || set -- "$@" docker-compose-v2
+    if [ "$#" -gt 0 ]; then
+      sudo apt-get update
+      sudo apt-get install --yes --no-install-recommends "$@"
+    fi
+
+builds:
+  validate:
+    name: Validate
+    script:
+      - shellcheck scripts/*.sh
+      - docker compose --env-file .env.example config --quiet
+      - |
+        docker compose --env-file .env.example config --format json |
+          jq -e --rawfile compose docker-compose.yml '
+            ($compose | capture(
+              "(?m)^      - type: bind\\n"
+              + "        source: [^\\n]+\\n"
+              + "        target: /etc/docker/certs\\.d\\n"
+              + "        read_only: true\\n"
+              + "        bind:\\n"
+              + "          create_host_path: (?<create_host_path>true|false)$"
+            )) as $declared_bind
+            |
+            [.services["docker-server"].volumes[] | select(.target == "/etc/docker/certs.d")] as $mounts
+            | ($mounts | length) == 1
+              and $mounts[0].type == "bind"
+              and $mounts[0].read_only == true
+              and ($declared_bind | has("create_host_path"))
+              and $declared_bind.create_host_path == "false"
+          '

@@ -88,7 +88,10 @@ docker compose config --quiet
 ```
 
 Recreating `docker-server` interrupts its nested Docker daemon and running
-builds. Install a new CA only while the builder is drained, or copy it into the
-same `/etc/docker/certs.d/<registry-host>:<port>/ca.crt` path in the currently
-running container before exercising the registry. The bind mount makes the
-host-managed trust roots durable for the next normal recreation.
+builds, so drain the builder before recreating it to install a new CA that way.
+To install a CA without recreating `docker-server`, copy it on the host to
+`DOCKER_REGISTRY_CERTS_DIR/<registry-host>:<port>/ca.crt` (using
+`./shared/docker-certs.d` by default). The existing read-only bind exposes that
+file at `/etc/docker/certs.d/<registry-host>:<port>/ca.crt` inside the running
+container immediately. Do not copy into the container path itself; the mount is
+read-only.
