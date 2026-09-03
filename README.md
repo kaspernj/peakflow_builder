@@ -2,26 +2,53 @@
 
 Docker Compose setup for a Peakflow Docker build server.
 
-## Private Docker API
+## Docker API modes
 
-`docker-server` listens on both its Unix socket and plaintext TCP port 2375. The
-TCP endpoint is private to the `peakflow-builder` Compose network and is
-available to attached reverse-gateway containers as `docker-server:2375`. It
-must never be published on the host; do not add a `ports` mapping for 2375.
+### Default: host-published TLS
 
-Recreating `docker-server` interrupts its nested Docker daemon and all nested
-workloads, including running builds. Drain the builder before recreating the
-service.
+The base `docker-compose.yml` is the default for off-home builders. It keeps the
+Unix socket, runs the TCP listener with certificate verification on port 8676,
+and publishes it on the host as `${HOST_PORT}:8676`.
+
+Start or recreate `docker-server` in this mode with the base file only:
+
+```bash
+docker compose up -d --remove-orphans docker-server
+```
+
+### Home network: Socketduct reverse gateway
+
+On a trusted home-network builder, explicitly layer the tracked Socketduct
+override over the base file:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.socketduct.yml up -d --remove-orphans docker-server
+```
+
+The override replaces the daemon command, disables the image's automatic TLS
+setup, and clears the base file's published ports. Its plaintext Docker API is
+reachable as `docker-server:2375` only by containers attached to the
+`peakflow-builder` Compose network. Never publish port 2375 on the host, and do
+not select this mode when that Docker network is untrusted or shared.
+
+The override inherits the base image and volume configuration unchanged,
+including `/var/lib/docker` data-volume behavior, `/shared`, and the private
+registry certificate mount at `/etc/docker/certs.d`.
+
+Include both `-f` arguments in every Compose command for this mode. Recreating
+`docker-server` interrupts its nested Docker daemon and all nested workloads,
+including running builds, so drain the builder first.
 
 ## Registry cache modes
 
-The same checkout can run in two modes controlled by `.env`.
+The registry cache mode is controlled separately by `.env`.
 
 ### Normal builder
 
 Most builder machines should use the central registry cache on Switch and should not run their own cache:
 
 ```env
+HOST_PORT=8676
 COMPOSE_PROFILES=
 REGISTRY_CACHE_HOST=192.168.86.82
 REGISTRY_CACHE_PORT=5000
@@ -41,6 +68,7 @@ must remain `5000` when `REGISTRY_CACHE_HOST=registry-cache`. Use
 `REGISTRY_CACHE_BIND_PORT` to publish the cache on a different LAN port.
 
 ```env
+HOST_PORT=2677
 COMPOSE_PROFILES=registry-cache
 REGISTRY_CACHE_HOST=registry-cache
 REGISTRY_CACHE_PORT=5000

@@ -16,6 +16,7 @@ builds:
     script:
       - shellcheck scripts/*.sh
       - docker compose --env-file .env.example config --quiet
+      - docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.socketduct.yml config --quiet
       - |
         docker compose --env-file .env.example config --format json |
           jq -e --rawfile compose docker-compose.yml '
@@ -39,13 +40,39 @@ builds:
         docker compose --env-file .env.example config --format json |
           jq -e '
             .services["docker-server"] as $service
-            | [$service.command[] | select(startswith("--host="))] == [
+            | $service.image == "docker:29.3.0-dind"
+              and [$service.command[] | select(startswith("--host="))] == [
+                "--host=unix:///var/run/docker.sock",
+                "--host=tcp://0.0.0.0:8676"
+              ]
+              and [$service.command[] | select(startswith("--tls"))] == [
+                "--tlsverify",
+                "--tlscacert=/shared/certificates/tlscacert.pem",
+                "--tlscert=/shared/certificates/tlscert.pem",
+                "--tlskey=/shared/certificates/tlskey.pem"
+              ]
+              and ($service.ports | length) == 1
+              and $service.ports[0].target == 8676
+              and $service.ports[0].published == "8676"
+              and ($service.command | index("--registry-mirror=http://192.168.86.82:5000")) != null
+              and ($service.command | index("--insecure-registry=192.168.86.82:5000")) != null
+              and ([$service.volumes[].target] | sort) == ["/etc/docker/certs.d", "/shared"]
+              and ([$service.volumes[] | select(.target == "/etc/docker/certs.d" and .read_only == true)] | length) == 1
+          '
+      - |
+        docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.socketduct.yml config --format json |
+          jq -e '
+            .services["docker-server"] as $service
+            | $service.image == "docker:29.3.0-dind"
+              and [$service.command[] | select(startswith("--host="))] == [
                 "--host=unix:///var/run/docker.sock",
                 "--host=tcp://0.0.0.0:2375"
               ]
               and ([$service.command[] | select(startswith("--tls"))] | length) == 0
+              and $service.environment.DOCKER_TLS_CERTDIR == ""
               and (($service.ports // []) | length) == 0
               and ($service.command | index("--registry-mirror=http://192.168.86.82:5000")) != null
               and ($service.command | index("--insecure-registry=192.168.86.82:5000")) != null
               and ([$service.volumes[].target] | sort) == ["/etc/docker/certs.d", "/shared"]
+              and ([$service.volumes[] | select(.target == "/etc/docker/certs.d" and .read_only == true)] | length) == 1
           '
