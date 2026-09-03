@@ -153,6 +153,9 @@ docker compose up -d
 Verify the cache through its configured host publication:
 
 ```bash
+set -a
+. ./.env
+set +a
 curl "http://${REGISTRY_CACHE_BIND}:${REGISTRY_CACHE_BIND_PORT}/v2/"
 ```
 
