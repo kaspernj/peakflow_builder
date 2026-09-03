@@ -2,13 +2,44 @@
 
 Docker Compose setup for a Peakflow Docker build server.
 
+## Topology configuration
+
+Copy `.env.example` to `.env` and choose values appropriate for the deployment.
+The defaults retain the existing subnet, service addresses, and ports, but no
+particular physical network or machine is required:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `BUILDER_NETWORK_NAME` | `peakflow-builder` | Docker network name created by Compose |
+| `BUILDER_NETWORK_SUBNET` | `58.0.0.0/24` | Non-overlapping subnet assigned to that network |
+| `DOCKER_SERVER_IPV4_ADDRESS` | `58.0.0.2` | `docker-server` address inside the subnet |
+| `REGISTRY_CACHE_IPV4_ADDRESS` | `58.0.0.3` | Local `registry-cache` address inside the subnet |
+| `DOCKER_SERVER_TLS_PORT` | `8676` | TLS Docker API listener inside `docker-server` |
+| `HOST_PORT` | `8676` | Host publication for the base TLS listener |
+| `DOCKER_SERVER_SOCKETDUCT_PORT` | `2375` | Plaintext Docker API listener in Socketduct mode |
+| `REGISTRY_CACHE_HOST` | `registry-cache` | Cache hostname or address reached by the Docker daemon |
+| `REGISTRY_CACHE_PORT` | `5000` | Cache listener and Docker daemon endpoint port |
+| `REGISTRY_PROXY_REMOTEURL` | `https://registry-1.docker.io` | Upstream registry mirrored by a local cache |
+| `REGISTRY_CACHE_BIND` | `127.0.0.1` | Host address used to publish a local cache |
+| `REGISTRY_CACHE_BIND_PORT` | `5000` | Host port used to publish a local cache |
+
+Both service addresses must belong to `BUILDER_NETWORK_SUBNET`. Choose a subnet
+that does not overlap host routes or other Docker networks.
+
+`docker-server`, `registry-cache`, and `peakflow-builder` remain stable logical
+Compose identifiers because the override, service DNS, profile, and network
+attachments use them as application contracts. `BUILDER_NETWORK_NAME` controls
+the actual Docker network name. Use `registry-cache` as `REGISTRY_CACHE_HOST`
+only when the local cache profile is enabled; otherwise provide a resolvable
+external hostname or address.
+
 ## Docker API modes
 
 ### Default: host-published TLS
 
-The base `docker-compose.yml` is the default for off-home builders. It keeps the
-Unix socket, runs the TCP listener with certificate verification on port 8676,
-and publishes it on the host as `${HOST_PORT}:8676`.
+The base `docker-compose.yml` is the secure default on any network. It keeps the
+Unix socket and publishes a certificate-verified TCP listener from
+`DOCKER_SERVER_TLS_PORT` to `HOST_PORT` on the host.
 
 Persist this mode in `.env`:
 
@@ -22,10 +53,10 @@ Then start or recreate `docker-server`:
 docker compose up -d --remove-orphans docker-server
 ```
 
-### Home network: Socketduct reverse gateway
+### Trusted private network: Socketduct reverse gateway
 
-On a trusted home-network builder, explicitly layer the tracked Socketduct
-override over the base file by replacing `COMPOSE_FILE` in `.env`:
+When the Socketduct gateway and builder share a trusted private Docker network,
+layer the tracked override by replacing `COMPOSE_FILE` in `.env`:
 
 ```env
 COMPOSE_FILE=docker-compose.yml:docker-compose.socketduct.yml
@@ -39,8 +70,8 @@ docker compose up -d --remove-orphans docker-server
 
 The override replaces the daemon command, disables the image's automatic TLS
 setup, and clears the base file's published ports. Its plaintext Docker API is
-reachable as `docker-server:2375` only by containers attached to the
-`peakflow-builder` Compose network. Never publish port 2375 on the host, and do
+reachable at `docker-server:${DOCKER_SERVER_SOCKETDUCT_PORT}` by containers
+attached to `BUILDER_NETWORK_NAME`. Never publish this port on the host, and do
 not select this mode when that Docker network is untrusted or shared.
 
 The override inherits the base image and volume configuration unchanged,
@@ -54,40 +85,36 @@ nested workloads, including running builds, so drain the builder first.
 
 ## Registry cache modes
 
-The registry cache mode is controlled separately by `.env`.
+The registry cache mode is independent of the Docker API mode.
 
-### Normal builder
+### External cache
 
-Most builder machines should use the central registry cache on Switch and should not run their own cache:
+Leave the local profile disabled and set the cache endpoint to a hostname or IP
+address reachable from `docker-server`:
 
 ```env
-COMPOSE_FILE=docker-compose.yml
-HOST_PORT=8676
 COMPOSE_PROFILES=
-REGISTRY_CACHE_HOST=192.168.86.82
+REGISTRY_CACHE_HOST=cache.example.net
 REGISTRY_CACHE_PORT=5000
 ```
 
-Then start/recreate the Docker server:
+`cache.example.net` is an example and must be replaced for the deployment.
+Start or recreate the Docker server with the selected Docker API mode:
 
 ```bash
 docker compose up -d --remove-orphans docker-server
 ```
 
-### Switch
+### Local cache
 
-Switch runs the registry cache and exposes it on the home LAN. `REGISTRY_CACHE_PORT` is
-always the cache endpoint used by the Docker daemon inside the Compose network, so it
-must remain `5000` when `REGISTRY_CACHE_HOST=registry-cache`. Use
-`REGISTRY_CACHE_BIND_PORT` to publish the cache on a different LAN port.
+Enable the profile and use the stable service identifier as the cache host:
 
 ```env
-COMPOSE_FILE=docker-compose.yml:docker-compose.socketduct.yml
-HOST_PORT=2677
 COMPOSE_PROFILES=registry-cache
 REGISTRY_CACHE_HOST=registry-cache
 REGISTRY_CACHE_PORT=5000
-REGISTRY_CACHE_BIND=192.168.86.82
+REGISTRY_PROXY_REMOTEURL=https://registry-1.docker.io
+REGISTRY_CACHE_BIND=127.0.0.1
 REGISTRY_CACHE_BIND_PORT=5000
 ```
 
@@ -97,10 +124,10 @@ Then start both services:
 docker compose up -d
 ```
 
-Verify the cache from Switch or another home-network machine:
+Verify the cache through its configured host publication:
 
 ```bash
-curl http://192.168.86.82:5000/v2/
+curl "http://${REGISTRY_CACHE_BIND}:${REGISTRY_CACHE_BIND_PORT}/v2/"
 ```
 
 Expected response:
