@@ -16,7 +16,7 @@ builds:
     script:
       - shellcheck scripts/*.sh
       - docker compose --env-file .env.example config --quiet
-      - docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.socketduct.yml config --quiet
+      - COMPOSE_FILE=docker-compose.yml:docker-compose.socketduct.yml docker compose --env-file .env.example config --quiet
       - |
         docker compose --env-file .env.example config --format json |
           jq -e --rawfile compose docker-compose.yml '
@@ -60,7 +60,7 @@ builds:
               and ([$service.volumes[] | select(.target == "/etc/docker/certs.d" and .read_only == true)] | length) == 1
           '
       - |
-        docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.socketduct.yml config --format json |
+        COMPOSE_FILE=docker-compose.yml:docker-compose.socketduct.yml docker compose --env-file .env.example config --format json |
           jq -e '
             .services["docker-server"] as $service
             | $service.image == "docker:29.3.0-dind"
