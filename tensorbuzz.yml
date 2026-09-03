@@ -35,3 +35,17 @@ builds:
               and ($declared_bind | has("create_host_path"))
               and $declared_bind.create_host_path == "false"
           '
+      - |
+        docker compose --env-file .env.example config --format json |
+          jq -e '
+            .services["docker-server"] as $service
+            | [$service.command[] | select(startswith("--host="))] == [
+                "--host=unix:///var/run/docker.sock",
+                "--host=tcp://0.0.0.0:2375"
+              ]
+              and ([$service.command[] | select(startswith("--tls"))] | length) == 0
+              and (($service.ports // []) | length) == 0
+              and ($service.command | index("--registry-mirror=http://192.168.86.82:5000")) != null
+              and ($service.command | index("--insecure-registry=192.168.86.82:5000")) != null
+              and ([$service.volumes[].target] | sort) == ["/etc/docker/certs.d", "/shared"]
+          '

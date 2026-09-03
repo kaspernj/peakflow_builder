@@ -2,6 +2,17 @@
 
 Docker Compose setup for a Peakflow Docker build server.
 
+## Private Docker API
+
+`docker-server` listens on both its Unix socket and plaintext TCP port 2375. The
+TCP endpoint is private to the `peakflow-builder` Compose network and is
+available to attached reverse-gateway containers as `docker-server:2375`. It
+must never be published on the host; do not add a `ports` mapping for 2375.
+
+Recreating `docker-server` interrupts its nested Docker daemon and all nested
+workloads, including running builds. Drain the builder before recreating the
+service.
+
 ## Registry cache modes
 
 The same checkout can run in two modes controlled by `.env`.
@@ -11,7 +22,6 @@ The same checkout can run in two modes controlled by `.env`.
 Most builder machines should use the central registry cache on Switch and should not run their own cache:
 
 ```env
-HOST_PORT=8676
 COMPOSE_PROFILES=
 REGISTRY_CACHE_HOST=192.168.86.82
 REGISTRY_CACHE_PORT=5000
@@ -31,7 +41,6 @@ must remain `5000` when `REGISTRY_CACHE_HOST=registry-cache`. Use
 `REGISTRY_CACHE_BIND_PORT` to publish the cache on a different LAN port.
 
 ```env
-HOST_PORT=2677
 COMPOSE_PROFILES=registry-cache
 REGISTRY_CACHE_HOST=registry-cache
 REGISTRY_CACHE_PORT=5000
@@ -87,9 +96,8 @@ Validate the configuration before recreating the Docker server:
 docker compose config --quiet
 ```
 
-Recreating `docker-server` interrupts its nested Docker daemon and running
-builds, so drain the builder before recreating it to install a new CA that way.
-To install a CA without recreating `docker-server`, copy it on the host to
+As noted above, recreating `docker-server` interrupts its nested workloads. To
+install a CA without recreating `docker-server`, copy it on the host to
 `DOCKER_REGISTRY_CERTS_DIR/<registry-host>:<port>/ca.crt` (using
 `./shared/docker-certs.d` by default). The existing read-only bind exposes that
 file at `/etc/docker/certs.d/<registry-host>:<port>/ca.crt` inside the running
