@@ -24,7 +24,7 @@ services:
         hard: ${DOCKER_SERVER_NOFILE_HARD:-524288}
       nproc: ${DOCKER_SERVER_NPROC:-65535}
     command:
-      - dockerd-entrypoint.sh
+      - dockerd
       - --group
       - "1000"
       - --tlsverify
@@ -61,7 +61,6 @@ services:
 
 networks:
   peakflow-builder:
-    name: ${BUILDER_NETWORK_NAME:-peakflow-builder}
     driver: bridge
     ipam:
       config:

@@ -10,7 +10,8 @@ particular physical network or machine is required:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `BUILDER_NETWORK_NAME` | `peakflow-builder` | Docker network name created by Compose |
+| `COMPOSE_PROJECT_NAME` | repository directory name | Compose project prefix, including for the default Docker network name |
+| `BUILDER_NETWORK_NAME` | unset | Exact Docker network name when `docker-compose.network-name.yml` is selected |
 | `BUILDER_NETWORK_SUBNET` | `58.0.0.0/24` | Non-overlapping subnet assigned to that network |
 | `DOCKER_SERVER_IPV4_ADDRESS` | `58.0.0.2` | `docker-server` address inside the subnet |
 | `REGISTRY_CACHE_IPV4_ADDRESS` | `58.0.0.3` | Local `registry-cache` address inside the subnet |
@@ -28,10 +29,23 @@ that does not overlap host routes or other Docker networks.
 
 `docker-server`, `registry-cache`, and `peakflow-builder` remain stable logical
 Compose identifiers because the override, service DNS, profile, and network
-attachments use them as application contracts. `BUILDER_NETWORK_NAME` controls
-the actual Docker network name. Use `registry-cache` as `REGISTRY_CACHE_HOST`
-only when the local cache profile is enabled; otherwise provide a resolvable
-external hostname or address.
+attachments use them as application contracts. They are not physical machine or
+network names. By default, Compose preserves the pre-existing project-scoped
+network identity, `<project>_peakflow-builder`; `<project>` comes from the
+repository directory unless `COMPOSE_PROJECT_NAME` is set. This lets an upgrade
+reuse its existing network without first tearing it down.
+
+To assign an exact arbitrary Docker network name instead, add the tracked
+exact-name override to the persisted mode and set `BUILDER_NETWORK_NAME`:
+
+```env
+COMPOSE_FILE=docker-compose.yml:docker-compose.network-name.yml
+BUILDER_NETWORK_NAME=portable-builder-net
+```
+
+`portable-builder-net` is only an example. Use `registry-cache` as
+`REGISTRY_CACHE_HOST` only when the local cache profile is enabled; otherwise
+provide a resolvable external hostname or address.
 
 ## Docker API modes
 
@@ -62,6 +76,14 @@ layer the tracked override by replacing `COMPOSE_FILE` in `.env`:
 COMPOSE_FILE=docker-compose.yml:docker-compose.socketduct.yml
 ```
 
+If this deployment also needs an exact Docker network name, include both
+overrides and set the name explicitly:
+
+```env
+COMPOSE_FILE=docker-compose.yml:docker-compose.socketduct.yml:docker-compose.network-name.yml
+BUILDER_NETWORK_NAME=portable-builder-net
+```
+
 Then use the same start command:
 
 ```bash
@@ -69,10 +91,14 @@ docker compose up -d --remove-orphans docker-server
 ```
 
 The override replaces the daemon command, disables the image's automatic TLS
-setup, and clears the base file's published ports. Its plaintext Docker API is
-reachable at `docker-server:${DOCKER_SERVER_SOCKETDUCT_PORT}` by containers
-attached to `BUILDER_NETWORK_NAME`. Never publish this port on the host, and do
-not select this mode when that Docker network is untrusted or shared.
+setup, and clears the base file's published ports. The stock DinD entrypoint
+still performs its normal initialization once, then starts the explicit
+`dockerd` command without adding automatic listeners. The plaintext Docker API
+is reachable at `docker-server:${DOCKER_SERVER_SOCKETDUCT_PORT}` by containers
+attached to the logical `peakflow-builder` network, whose actual name is either
+project-scoped or explicitly selected as described above. Never publish this
+port on the host, and do not select this mode when that Docker network is
+untrusted or shared.
 
 The override inherits the base image and volume configuration unchanged,
 including `/var/lib/docker` data-volume behavior, `/shared`, and the private
