@@ -1,0 +1,3 @@
+networks:
+  peakflow-builder:
+    name: ${BUILDER_NETWORK_NAME:?Set BUILDER_NETWORK_NAME when using docker-compose.network-name.yml}
