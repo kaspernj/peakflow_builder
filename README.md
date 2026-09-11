@@ -18,6 +18,7 @@ particular physical network or machine is required:
 | `DOCKER_SERVER_TLS_PORT` | `8676` | TLS Docker API listener inside `docker-server` |
 | `HOST_PORT` | `8676` | Host publication for the base TLS listener |
 | `DOCKER_SERVER_SOCKETDUCT_PORT` | `2375` | Plaintext Docker API listener in Socketduct mode |
+| `DOCKER_SERVER_MEMORY_LIMIT` | `20g` | Hard RAM and combined RAM-plus-swap ceiling for the DinD parent and every nested child |
 | `REGISTRY_CACHE_HOST` | `registry-cache` | Cache hostname or address reached by the Docker daemon |
 | `REGISTRY_CACHE_PORT` | `5000` | Cache listener and Docker daemon endpoint port |
 | `REGISTRY_PROXY_REMOTEURL` | `https://registry-1.docker.io` | Upstream registry mirrored by a local cache |
@@ -46,6 +47,49 @@ BUILDER_NETWORK_NAME=portable-builder-net
 `portable-builder-net` is only an example. Use `registry-cache` as
 `REGISTRY_CACHE_HOST` only when the local cache profile is enabled; otherwise
 provide a resolvable external hostname or address.
+
+## Memory containment
+
+The checked-in default gives the complete `docker-server` cgroup a 20 GiB hard
+RAM limit and the same 20 GiB combined RAM-plus-swap limit. One
+`DOCKER_SERVER_MEMORY_LIMIT` value drives both Compose controls, so they cannot
+drift and silently re-enable swap. The parent cgroup includes `dockerd`, all
+nested build and service containers, nested filesystem page cache and slab, and
+small management containers such as the Socketduct gateway.
+
+TensorBuzz admission remains a separate 16 GiB estimated-use envelope. It sums
+measured or configured estimates for each build and its services; those
+reservations are scheduling guidance rather than kernel limits. The 20 GiB
+parent ceiling is sized as that 16 GiB envelope plus a 4 GiB allowance for the
+DinD daemon and kernel-accounted overhead. Large reclaimable layer/page caches
+are reclaimed inside the parent instead of growing until the shared host
+exhausts memory. Do not lower the TensorBuzz budget to compensate for parent
+overhead, and do not raise the parent limit without rechecking the
+controller-model peak plus host/OS margin.
+
+Build and service containers retain their own hard limits. A child that exceeds
+its limit is failed by Docker and reported by the build path; the parent limit is
+the aggregate containment boundary that prevents all nested work and cache from
+pressuring unrelated host services. Do not hide a contained failure with retries.
+
+Before rollout, render the effective model and require both values to be equal:
+
+```bash
+docker compose config --format json
+```
+
+A rollout requires draining accepted/running builds because recreating
+`docker-server` interrupts its nested daemon. Reuse the existing Docker data
+mount/volume so images, caches, volumes, and stopped nested state survive the
+recreation. Afterward, verify the outer container's `HostConfig.Memory` and
+`HostConfig.MemorySwap`, cgroup `memory.max`, zero `memory.swap.max`, nested
+Docker API health, and Socketduct connectivity before returning the builder to
+scheduling.
+
+Rollback is the previous repository revision followed by the same drained
+recreation and readback. That restores the previous unlimited parent model, so
+use it only to recover a concrete incompatibility and keep the builder drained
+until another safe containment plan is selected.
 
 ## Docker API modes
 
