@@ -1,4 +1,5 @@
 .env
 .env.local
 registry-data/
+node_modules/
 shared/certificates/*.pem

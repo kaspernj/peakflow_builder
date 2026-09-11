@@ -1,0 +1,12 @@
+{
+  "name": "peakflow-builder",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "velocious-test tests/memory-contract.test.js",
+    "lint": "node --check tests/memory-contract.test.js"
+  },
+  "devDependencies": {
+    "@velocious/testing": "0.0.12"
+  }
+}

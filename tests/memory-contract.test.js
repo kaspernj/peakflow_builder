@@ -1,79 +1,111 @@
-'use strict'
+import {execFileSync} from "node:child_process"
+import fs from "node:fs"
+import path from "node:path"
+import {fileURLToPath} from "node:url"
 
-const assert = require('node:assert/strict')
-const {execFileSync} = require('node:child_process')
-const path = require('node:path')
-const {test} = require('node:test')
+import {describe, expect, it} from "@velocious/testing"
 
-const repoRoot = path.resolve(__dirname, '..')
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const gibibyte = 1024 ** 3
+const composeFiles = ["docker-compose.yml", "docker-compose.socketduct.yml"]
+const emptyEnvFile = path.join("tests", "fixtures", "empty.env")
 
-function renderCompose({socketduct = false, memoryLimit} = {}) {
+function composeInterpolationVariables() {
+  const variables = new Set(["COMPOSE_FILE", "COMPOSE_PROFILES", "COMPOSE_PROJECT_NAME"])
+
+  for (const composeFile of composeFiles) {
+    const source = fs.readFileSync(path.join(repoRoot, composeFile), "utf8")
+
+    for (const match of source.matchAll(/\$\{([A-Z][A-Z0-9_]*)/gu)) {
+      variables.add(match[1])
+    }
+  }
+
+  return variables
+}
+
+function renderCompose({inheritedEnvironment = {}, memoryLimit, socketduct = false} = {}) {
   const args = [
-    'compose',
-    '--project-name',
-    'peakflow-builder-memory-contract-test',
-    '--file',
-    'docker-compose.yml'
+    "compose",
+    "--project-name",
+    "peakflow-builder-memory-contract-test",
+    "--env-file",
+    emptyEnvFile,
+    "--file",
+    "docker-compose.yml"
   ]
 
   if (socketduct) {
-    args.push('--file', 'docker-compose.socketduct.yml')
+    args.push("--file", "docker-compose.socketduct.yml")
   }
 
-  args.push('config', '--format', 'json')
+  args.push("config", "--format", "json")
 
-  const env = {...process.env}
-  for (const key of ['COMPOSE_FILE', 'COMPOSE_PROFILES', 'COMPOSE_PROJECT_NAME']) {
+  const env = {...process.env, ...inheritedEnvironment}
+  for (const key of composeInterpolationVariables()) {
     delete env[key]
   }
 
   if (memoryLimit) env.DOCKER_SERVER_MEMORY_LIMIT = memoryLimit
 
-  return JSON.parse(execFileSync('docker', args, {
+  return JSON.parse(execFileSync("docker", args, {
     cwd: repoRoot,
-    encoding: 'utf8',
+    encoding: "utf8",
     env,
-    stdio: ['ignore', 'pipe', 'pipe']
+    stdio: ["ignore", "pipe", "pipe"]
   }))
 }
 
 function dockerServer(config) {
-  return config.services['docker-server']
+  return config.services["docker-server"]
 }
 
-function assertContainedParent(service, expectedBytes) {
-  assert.equal(Number(service.mem_limit), expectedBytes)
-  assert.equal(Number(service.memswap_limit), expectedBytes)
-  assert.equal(service.privileged, true)
-  assert.equal(Number(service.shm_size), 2 * gibibyte)
+function expectContainedParent(service, expectedBytes) {
+  expect(Number(service.mem_limit)).toBe(expectedBytes)
+  expect(Number(service.memswap_limit)).toBe(expectedBytes)
+  expect(service.privileged).toBeTrue()
+  expect(Number(service.shm_size)).toBe(2 * gibibyte)
 }
 
-test('default parent reserves 16 GiB for admitted work and 4 GiB for DinD overhead', () => {
-  const service = dockerServer(renderCompose())
+describe("docker-server memory containment", () => {
+  it("reserves 16 GiB for admitted work and 4 GiB for DinD overhead", () => {
+    const service = dockerServer(renderCompose())
 
-  assertContainedParent(service, 20 * gibibyte)
-  assert.equal(Number(service.mem_limit) - (16 * gibibyte), 4 * gibibyte)
-})
+    expectContainedParent(service, 20 * gibibyte)
+    expect(Number(service.mem_limit) - (16 * gibibyte)).toBe(4 * gibibyte)
+  })
 
-test('Socketduct mode inherits the same hard RAM and no-swap ceiling', () => {
-  const service = dockerServer(renderCompose({socketduct: true}))
+  it("isolates checked-in defaults from inherited deployment configuration", () => {
+    const service = dockerServer(renderCompose({
+      inheritedEnvironment: {
+        COMPOSE_FILE: "docker-compose.yml:docker-compose.socketduct.yml",
+        COMPOSE_PROJECT_NAME: "production-builder",
+        DOCKER_SERVER_MEMORY_LIMIT: "22g"
+      }
+    }))
 
-  assertContainedParent(service, 20 * gibibyte)
-  assert.deepEqual(service.ports, undefined)
-  assert(service.command.includes('--host=tcp://0.0.0.0:2375'))
-})
+    expectContainedParent(service, 20 * gibibyte)
+  })
 
-test('parent RAM and total RAM-plus-swap ceilings are explicitly configurable together', () => {
-  const service = dockerServer(renderCompose({memoryLimit: '22g'}))
+  it("inherits the same hard RAM and no-swap ceiling in Socketduct mode", () => {
+    const service = dockerServer(renderCompose({socketduct: true}))
 
-  assertContainedParent(service, 22 * gibibyte)
-})
+    expectContainedParent(service, 20 * gibibyte)
+    expect(service.ports).toBeUndefined()
+    expect(service.command).toContain("--host=tcp://0.0.0.0:2375")
+  })
 
-test('memory configuration does not replace persistent nested-Docker or certificate mounts', () => {
-  const service = dockerServer(renderCompose())
-  const mountsByTarget = new Map(service.volumes.map((mount) => [mount.target, mount]))
+  it("configures parent RAM and total RAM-plus-swap ceilings together", () => {
+    const service = dockerServer(renderCompose({memoryLimit: "22g"}))
 
-  assert(mountsByTarget.has('/shared'))
-  assert.equal(mountsByTarget.get('/etc/docker/certs.d').read_only, true)
+    expectContainedParent(service, 22 * gibibyte)
+  })
+
+  it("preserves persistent nested-Docker and certificate mounts", () => {
+    const service = dockerServer(renderCompose())
+    const mountsByTarget = new Map(service.volumes.map((mount) => [mount.target, mount]))
+
+    expect(mountsByTarget.has("/shared")).toBeTrue()
+    expect(mountsByTarget.get("/etc/docker/certs.d").read_only).toBeTrue()
+  })
 })

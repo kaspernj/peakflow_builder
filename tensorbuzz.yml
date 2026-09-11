@@ -14,6 +14,9 @@ builds:
   validate:
     name: Validate
     script:
+      - npm ci
+      - npm test
+      - npm run lint
       - shellcheck scripts/*.sh
       - docker compose --env-file .env.example config --quiet
       - COMPOSE_FILE=docker-compose.yml:docker-compose.socketduct.yml docker compose --env-file .env.example config --quiet
